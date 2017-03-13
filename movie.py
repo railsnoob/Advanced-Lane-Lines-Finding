@@ -12,7 +12,8 @@ def p(img):
     return result
 
 if PROCESS_MOVIE == False:
-    inpimg = mpimg.imread('test_images/test1.jpg')
+    # inpimg = mpimg.imread('test_images/test1.jpg')
+    inpimg = mpimg.imread('test_images/error_prone_image.jpg')
     result = process_image(inpimg)
 
     plt.title("End result")

@@ -1,6 +1,7 @@
 # Compute the camera calibration matrix
 
 # Go through each image in the camera calibration image
+import scipy
 import numpy as np
 import cv2
 import glob
@@ -40,6 +41,7 @@ def find_obj_img_points():
 CROP_Y = 410
 
 def get_transformed(img, img_size):
+    global DEBUG
     
     perspective = np.array([[294,665],[1014,665],[710,465],[576,465]],dtype="float32")
     noperspective = np.array([[400,665],[900,665],[900,465],[400,465]],dtype="float32")
@@ -50,8 +52,9 @@ def get_transformed(img, img_size):
     perspective = np.array([[294,665-CROP_Y],[1014,665-CROP_Y],[710,465-CROP_Y],[576,465-CROP_Y]],dtype="float32")
     noperspective = np.array([[400,665-CROP_Y],[1100,665-CROP_Y],[1100,465-CROP_Y],[400,465-CROP_Y]],dtype="float32")
 
-    print(perspective.shape)
-    print(noperspective.shape)
+    if DEBUG:
+        print(perspective.shape)
+        print(noperspective.shape)
     
     M = cv2.getPerspectiveTransform(perspective, noperspective)
 
@@ -59,6 +62,8 @@ def get_transformed(img, img_size):
     
     warped = cv2.warpPerspective(img,M,img_size,flags=cv2.INTER_LINEAR )
 
+
+    
     return M,warped,Minv
 
 
@@ -68,7 +73,7 @@ def crop_y(img, from_top, from_bottom):
     return img[from_top:(y-from_bottom),:,:]
 
 
-def pipeline(img, s_thresh=(130,255), sx_thresh=(50,100)):
+def pipeline(img, s_thresh=(120,150), sx_thresh=(50,120)):
     global DEBUG
     
     img = np.copy(img)
@@ -80,8 +85,7 @@ def pipeline(img, s_thresh=(130,255), sx_thresh=(50,100)):
     if DEBUG:
         plt.imshow(img)
         plt.show()
-    
-    print(" X {}  Y {} shape:{}".format(img.shape[1],img.shape[0],img.shape))
+        print(" X {}  Y {} shape:{}".format(img.shape[1],img.shape[0],img.shape))
     
     hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
 
@@ -98,6 +102,7 @@ def pipeline(img, s_thresh=(130,255), sx_thresh=(50,100)):
     scaled_sobel = np.uint8(255*abs_sobelx/np.max(abs_sobelx))
 
     if DEBUG:
+        plt.title("Scaled Sobel")
         plt.imshow(scaled_sobel)
         plt.show()
     
@@ -129,9 +134,13 @@ def pipeline(img, s_thresh=(130,255), sx_thresh=(50,100)):
         plt.title("COMBINED BINARY")
         plt.imshow(combined_binary)
         plt.show()
-    
+        cv2.imwrite("test_images/test1_combined.jpg",combined_binary)
+            
     M , warped, Minv = get_transformed(combined_binary, (combined_binary.shape[1], combined_binary.shape[0]))
 
+    if DEBUG:
+        cv2.imwrite("test_images/test1_warped.jpg",warped)
+    
     return warped, Minv
     # return color_binary
 
@@ -139,10 +148,11 @@ def pipeline(img, s_thresh=(130,255), sx_thresh=(50,100)):
 
     
 def fit_poly_to_lane_line(binary_warped):
-    global first_image
-    
-    print("Binary Warped {} ".format(binary_warped.shape))
-    print("{}".format(np.unique(binary_warped)))
+    global first_image, DEBUG
+
+    if DEBUG:
+        print("Binary Warped {} ".format(binary_warped.shape))
+        print("{}".format(np.unique(binary_warped)))
     # Assuming you have created a warped binary image called "binary_warped"
     # Take a histogram of the bottom half of the image
     
@@ -251,7 +261,7 @@ def fit_poly_to_lane_line(binary_warped):
         plt.xlim(0, 1280)
         plt.ylim(720, 0)
         plt.show()
-
+        cv2.imwrite("test_images/test1_color_fit_lines.jpg",out_img)
     
     return [left_fitx,right_fitx,ploty ]
 
@@ -290,8 +300,12 @@ def get_curvature(left_fitx, right_fitx):
     y_eval = np.max(ploty)
     left_curverad = ((1 + (2*left_fit[0]*y_eval + left_fit[1])**2)**1.5) / np.absolute(2*left_fit[0])
     right_curverad = ((1 + (2*right_fit[0]*y_eval + right_fit[1])**2)**1.5) / np.absolute(2*right_fit[0])
-    print(left_curverad, right_curverad)
 
+    if DEBUG:
+        print(left_curverad, right_curverad)
+
+    mid_point_pixel_space = (rightx[0] - leftx[0])/2 + leftx[0]
+        
     ym_per_pix = 30/720 # meters per pixel in y dimension
     xm_per_pix = 3.7/700 # meters per pixel in x dimension
 
@@ -302,9 +316,16 @@ def get_curvature(left_fitx, right_fitx):
     left_curverad = ((1 + (2*left_fit_cr[0]*y_eval*ym_per_pix + left_fit_cr[1])**2)**1.5) / np.absolute(2*left_fit_cr[0])
     right_curverad = ((1 + (2*right_fit_cr[0]*y_eval*ym_per_pix + right_fit_cr[1])**2)**1.5) / np.absolute(2*right_fit_cr[0])
     # Now our radius of curvature is in meters
-    print(left_curverad, 'm', right_curverad, 'm')
+
     
-    return (left_curverad,right_curverad)
+    mid_screen = 1280/2
+    offset_px = mid_screen-mid_point_pixel_space
+    offset = np.abs((mid_screen - mid_point_pixel_space)*xm_per_pix)
+
+    if DEBUG:
+        print(left_curverad, 'm', right_curverad, 'm')
+    
+    return (left_curverad,right_curverad,offset)
     
 def get_dist_mtx(img):
     img_size = (img.shape[1], img.shape[0])
@@ -331,7 +352,7 @@ def find_transform_points():
     plt.show()
 
 
-def draw_wrap_image(undist, warped,ploty,left_fitx,right_fitx,Minv):
+def draw_wrap_image(undist, warped,ploty,left_fitx,right_fitx,Minv,left_curve_rad,right_curve_rad,offset):
     # Create an image to draw the lines on
     warp_zero = np.zeros_like(warped).astype(np.uint8)
     color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
@@ -344,6 +365,10 @@ def draw_wrap_image(undist, warped,ploty,left_fitx,right_fitx,Minv):
     # Draw the lane onto the warped blank image
     cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
 
+
+    cv2.polylines(color_warp, np.int_([pts_right]), False ,(255,0, 0),thickness=30)
+    cv2.polylines(color_warp, np.int_([pts_left]), False,(0,0,255),thickness=30)
+    
     # Warp the blank back to original image space using inverse perspective matrix (Minv)
     # image
     newwarp = cv2.warpPerspective(color_warp, Minv, (undist.shape[1], undist.shape[0]))
@@ -357,6 +382,8 @@ def draw_wrap_image(undist, warped,ploty,left_fitx,right_fitx,Minv):
     # Combine the result with the original image
     result = cv2.addWeighted(undist, 1, newwarp, 0.3, 0)
 
+    cv2.putText(result,"Radius of Curvature: {:6.2f}m Offset:{:4.2f}m".format((left_curve_rad+right_curve_rad)/2,offset ), (10,100), cv2.FONT_HERSHEY_SIMPLEX,1, 255)
+    
     if DEBUG:
         plt.imshow(result)
         plt.show()
@@ -367,7 +394,7 @@ def draw_wrap_image(undist, warped,ploty,left_fitx,right_fitx,Minv):
 
 # find_transform_points()
 # if 1:
-#     exit()
+#    exit()
 
 
 def load_from_pickle():
@@ -399,19 +426,41 @@ def process_image(img):
         mtx, dist = get_dist_mtx(img)
         save_pickle(mtx,dist)
 
-    # TODO pickle the points and read them back istead of running this shitea
-
     dst = cv2.undistort(img, mtx, dist, None,mtx)
     # cv2.imwrite('test_images/test1_unsdist.jpg',dst)
 
+
+    if DEBUG:
+        test_img = mpimg.imread("test_images/straight_lines1.jpg")
+        y = test_img.shape[0]
+        test_img =  crop_y(test_img, 410, y-670)    
+        pM, pers, pMinv = get_transformed(test_img,(test_img.shape[1],test_img.shape[0]))
+
+    
+    if DEBUG and False:
+        fig = plt.figure(1,figsize=(8,10))
+        plt.title('Perspective Transform')
+        plt.imshow(test_img)
+        plt.show()
+        plt.imshow(pers)
+        plt.show()
+
+    
+
     th, Minv = pipeline(dst)
+
+    if DEBUG:
+        plt.title("TH pipeline output")
+        cv2.imwrite("test_images/test1_combined_thresholdx.jpg",th)
+        plt.imshow(th)
+        plt.show()
+    
     
     first_image = True
     left_fitx, right_fitx, ploty = fit_poly_to_lane_line(th)
 
-    left_curverad, right_curverad = get_curvature(left_fitx, right_fitx)
-    result = draw_wrap_image(dst , th,ploty,left_fitx,right_fitx,Minv)
-
+    left_curverad, right_curverad, offset = get_curvature(left_fitx, right_fitx)
+    result = draw_wrap_image(dst , th,ploty,left_fitx,right_fitx,Minv,left_curverad,right_curverad,offset)
 
     if DEBUG:
         f, ((ax1 , ax2) ,(ax3 , ax4)) = plt.subplots(2,2,figsize=(20,10))
@@ -422,7 +471,6 @@ def process_image(img):
         ax3.imshow(th)
         ax3.set_title('Mask', fontsize = 30)
         f.show()
-
 
     save_pickle(mtx,dist)
 
