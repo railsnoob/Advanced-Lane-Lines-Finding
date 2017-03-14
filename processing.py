@@ -61,9 +61,6 @@ def get_transformed(img, img_size):
     Minv = cv2.getPerspectiveTransform(noperspective, perspective)
     
     warped = cv2.warpPerspective(img,M,img_size,flags=cv2.INTER_LINEAR )
-
-
-    
     return M,warped,Minv
 
 
@@ -73,6 +70,8 @@ def crop_y(img, from_top, from_bottom):
     return img[from_top:(y-from_bottom),:,:]
 
 
+# def pipeline(img, s_thresh=(120,150), sx_thresh=(50,120)):
+# def pipeline(img, s_thresh=(50,225), sx_thresh=(20,120)):
 def pipeline(img, s_thresh=(120,150), sx_thresh=(50,120)):
     global DEBUG
     
@@ -93,8 +92,6 @@ def pipeline(img, s_thresh=(120,150), sx_thresh=(50,120)):
     l_channel = hls[:,:,1]
     s_channel = hls[:,:,2]
 
-    
-    
     # Sobel X
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0)
@@ -125,7 +122,6 @@ def pipeline(img, s_thresh=(120,150), sx_thresh=(50,120)):
         plt.show()
     
     color_binary = np.dstack((np.zeros_like(sxbinary), sxbinary, s_binary))
-    
  
     combined_binary = np.zeros_like(sxbinary)
     combined_binary[(s_binary==1) | (sxbinary == 1)] = 1
@@ -352,7 +348,7 @@ def find_transform_points():
     plt.show()
 
 
-def draw_wrap_image(undist, warped,ploty,left_fitx,right_fitx,Minv,left_curve_rad,right_curve_rad,offset):
+def draw_wrap_image(undist, warped,ploty,left_fitx,right_fitx,Minv,left_curve_rad,right_curve_rad,offset,left_lane_info=None,right_lane_info=None):
     # Create an image to draw the lines on
     warp_zero = np.zeros_like(warped).astype(np.uint8)
     color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
@@ -360,14 +356,22 @@ def draw_wrap_image(undist, warped,ploty,left_fitx,right_fitx,Minv,left_curve_ra
     # Recast the x and y points into usable format for cv2.fillPoly()
     pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
     pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
-    pts = np.hstack((pts_left, pts_right))
 
+    accel_l,mean_l,pts_left_to_use = left_lane_info.filter_lane_points(pts_left)
+    accel_r,mean_r,pts_right_to_use = right_lane_info.filter_lane_points(pts_right)
+
+    pts = np.hstack((pts_left_to_use, pts_right_to_use))
+
+    
     # Draw the lane onto the warped blank image
     cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
 
+    # Draw the lane lines
+    cv2.polylines(color_warp, np.int_([pts_right_to_use]), False ,(255,0, 0),thickness=30)
+    cv2.polylines(color_warp, np.int_([pts_left_to_use]), False,(0,0,255),thickness=30)
 
-    cv2.polylines(color_warp, np.int_([pts_right]), False ,(255,0, 0),thickness=30)
-    cv2.polylines(color_warp, np.int_([pts_left]), False,(0,0,255),thickness=30)
+
+
     
     # Warp the blank back to original image space using inverse perspective matrix (Minv)
     # image
@@ -375,14 +379,16 @@ def draw_wrap_image(undist, warped,ploty,left_fitx,right_fitx,Minv,left_curve_ra
 
     rows = newwarp.shape[0]
     cols = newwarp.shape[1]
-    # Move the newwarp down on me
+    
+    # Move the newwarp down on my non cropped image
     M= np.float32([[1,0,0],[0,1,410]])
+
     newwarp = cv2.warpAffine(newwarp,M, (cols,rows))
     
     # Combine the result with the original image
     result = cv2.addWeighted(undist, 1, newwarp, 0.3, 0)
 
-    cv2.putText(result,"Radius of Curvature: {:6.2f}m Offset:{:4.2f}m".format((left_curve_rad+right_curve_rad)/2,offset ), (10,100), cv2.FONT_HERSHEY_SIMPLEX,1, 255)
+    cv2.putText(result,"R: {:6.2f}m Off:{:4.2f}m Lu:{:6.2f} La:{:6.2f} Ru:{:6.2f} Ra:{:6.2f}".format((left_curve_rad+right_curve_rad)/2,offset,mean_l,accel_l,mean_r,accel_r ), (10,100), cv2.FONT_HERSHEY_SIMPLEX,1, 255)
     
     if DEBUG:
         plt.imshow(result)
@@ -410,7 +416,7 @@ def save_pickle(mtx,dist):
 
 
 
-def process_image(img):
+def process_image(img,left_lane_info=None,right_lane_info=None):
     global first_image
     no_file = False
     mtx = None
@@ -460,9 +466,9 @@ def process_image(img):
     left_fitx, right_fitx, ploty = fit_poly_to_lane_line(th)
 
     left_curverad, right_curverad, offset = get_curvature(left_fitx, right_fitx)
-    result = draw_wrap_image(dst , th,ploty,left_fitx,right_fitx,Minv,left_curverad,right_curverad,offset)
+    result = draw_wrap_image(dst , th,ploty,left_fitx,right_fitx,Minv,left_curverad,right_curverad,offset,left_lane_info,right_lane_info)
 
-    if DEBUG:
+    if DEBUG and False :
         f, ((ax1 , ax2) ,(ax3 , ax4)) = plt.subplots(2,2,figsize=(20,10))
         ax1.imshow(img)
         ax1.set_title('Original Image' , fontsize = 30)
