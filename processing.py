@@ -13,6 +13,8 @@ import matplotlib.image as mpimg
 
 DEBUG = False
 
+
+
 def find_obj_img_points():
     objp = np.zeros((6*9,3),np.float32)
     objp[:,:2] = np.mgrid[0:9, 0:6].T.reshape(-1,2)
@@ -70,9 +72,33 @@ def crop_y(img, from_top, from_bottom):
     return img[from_top:(y-from_bottom),:,:]
 
 
+def hsv_v_mask(img,gray):
+    
+    hsv = cv2.cvtColor(img,cv2.COLOR_RGB2HSV)
+    hsv_h_channel = hsv[:,:,0]
+    hsv_s_channel = hsv[:,:,1]
+    hsv_v_channel = hsv[:,:,2]
+
+    t = [hsv_h_channel,hsv_s_channel,hsv_v_channel] 
+    v_thresh=[30,180]
+
+    for i in range(3):
+        vbinary = np.zeros_like(gray)
+        v = t[i]
+        vbinary[ (v >= v_thresh[0]) & (v <= v_thresh[1]) ] = 1
+    
+        if DEBUG:
+            plt.title("HSV -V {}".format(i))
+            plt.imshow(vbinary)
+            plt.show()
+
+    return vbinary
+    
+
 # def pipeline(img, s_thresh=(120,150), sx_thresh=(50,120)):
-# def pipeline(img, s_thresh=(50,225), sx_thresh=(20,120)):
-def pipeline(img, s_thresh=(120,150), sx_thresh=(50,120)):
+# def pipeline(img, s_thresh=(50,225), sx_thresh=(20,120)): CORRECT
+# s_thresh=(170, 255), sx_thresh=(20, 100)
+def pipeline(img, s_thresh=(50,255), sx_thresh=(20,120)):
     global DEBUG
     
     img = np.copy(img)
@@ -92,9 +118,11 @@ def pipeline(img, s_thresh=(120,150), sx_thresh=(50,120)):
     l_channel = hls[:,:,1]
     s_channel = hls[:,:,2]
 
+
     # Sobel X
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0)
+    sobely = cv2.Sobel(gray,cv2.CV_64F, 0,1)
     abs_sobelx = np.absolute(sobelx)
     scaled_sobel = np.uint8(255*abs_sobelx/np.max(abs_sobelx))
 
@@ -102,6 +130,7 @@ def pipeline(img, s_thresh=(120,150), sx_thresh=(50,120)):
         plt.title("Scaled Sobel")
         plt.imshow(scaled_sobel)
         plt.show()
+
     
     # Threshold x gradient
     sxbinary = np.zeros_like(scaled_sobel)
@@ -124,7 +153,8 @@ def pipeline(img, s_thresh=(120,150), sx_thresh=(50,120)):
     color_binary = np.dstack((np.zeros_like(sxbinary), sxbinary, s_binary))
  
     combined_binary = np.zeros_like(sxbinary)
-    combined_binary[(s_binary==1) | (sxbinary == 1)] = 1
+    
+    combined_binary[ (s_binary==1) | (sxbinary == 1)  ] = 1
 
     if DEBUG:
         plt.title("COMBINED BINARY")
@@ -262,10 +292,13 @@ def fit_poly_to_lane_line(binary_warped):
     return [left_fitx,right_fitx,ploty ]
 
 
-def get_curvature(left_fitx, right_fitx):
+def get_curvature(left_fitx, right_fitx,ploty):
     # Generate some fake data to represent lane-line pixels
-    ploty = np.linspace(0, 719, num=720)# to cover same y-range as image
+
+    ploty = np.linspace(0, 259, num=260)# to cover same y-range as image
+
     quadratic_coeff = 3e-4 # arbitrary quadratic coefficient
+
     # For each y position generate random x position within +/-50 pix
     # of the line base position in each case (x=200 for left, and x=900 for right)
     leftx = np.array([200 + (y**2)*quadratic_coeff + np.random.randint(-50, high=51) for y in ploty])
@@ -302,7 +335,7 @@ def get_curvature(left_fitx, right_fitx):
 
     mid_point_pixel_space = (rightx[0] - leftx[0])/2 + leftx[0]
         
-    ym_per_pix = 30/720 # meters per pixel in y dimension
+    ym_per_pix = 30/260 # meters per pixel in y dimension
     xm_per_pix = 3.7/700 # meters per pixel in x dimension
 
     # Fit new polynomials to x,y in world space
@@ -465,7 +498,12 @@ def process_image(img,left_lane_info=None,right_lane_info=None):
     first_image = True
     left_fitx, right_fitx, ploty = fit_poly_to_lane_line(th)
 
-    left_curverad, right_curverad, offset = get_curvature(left_fitx, right_fitx)
+    if DEBUG:
+        print("left_fitx:",left_fitx)
+        print("right_fitx:", right_fitx)
+        print("ploty :", ploty)
+    
+    left_curverad, right_curverad, offset = get_curvature(left_fitx, right_fitx,ploty)
     result = draw_wrap_image(dst , th,ploty,left_fitx,right_fitx,Minv,left_curverad,right_curverad,offset,left_lane_info,right_lane_info)
 
     if DEBUG and False :
