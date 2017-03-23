@@ -13,8 +13,6 @@ import matplotlib.image as mpimg
 
 DEBUG = False
 
-
-
 def find_obj_img_points():
     objp = np.zeros((6*9,3),np.float32)
     objp[:,:2] = np.mgrid[0:9, 0:6].T.reshape(-1,2)
@@ -93,6 +91,26 @@ def hsv_v_mask(img,gray):
             plt.show()
 
     return vbinary
+
+
+def mag_thresh(img, sobel_kernel=3, mag_thresh=(0, 255)):
+    
+    # Apply the following steps to img
+    # 1) Convert to grayscale
+    gray = cv2.cvtColor(img,cv2.COLOR_RGB2GRAY)
+    # 2) Take the gradient in x and y separately
+    sobelx = cv2.Sobel(gray,cv2.CV_64F,1,0)
+    sobely = cv2.Sobel(gray,cv2.CV_64F,0,1)
+    # 3) Calculate the magnitude 
+    magnitude  = np.sqrt(sobelx*sobelx + sobely*sobely)
+    # 4) Scale to 8-bit (0 - 255) and convert to type = np.uint8
+    scaled = np.uint8(magnitude*255/np.max(magnitude))
+    # 5) Create a binary mask where mag thresholds are met
+    mask = np.zeros_like(scaled)
+    mask[ (scaled <= mag_thresh[1] ) & (scaled >= mag_thresh[0]) ]= 1
+    # 6) Return this mask as your binary_output image
+    binary_output = mask
+    return binary_output
     
 
 # def pipeline(img, s_thresh=(120,150), sx_thresh=(50,120)):
@@ -496,15 +514,17 @@ def process_image(img,left_lane_info=None,right_lane_info=None):
     
     
     first_image = True
-    left_fitx, right_fitx, ploty = fit_poly_to_lane_line(th)
+    left_fitx, right_fitx, ploty = fit_poly_to_lane_line(th) # A
 
     if DEBUG:
         print("left_fitx:",left_fitx)
         print("right_fitx:", right_fitx)
         print("ploty :", ploty)
     
-    left_curverad, right_curverad, offset = get_curvature(left_fitx, right_fitx,ploty)
+    left_curverad, right_curverad, offset = get_curvature(left_fitx, right_fitx,ploty) # B
     result = draw_wrap_image(dst , th,ploty,left_fitx,right_fitx,Minv,left_curverad,right_curverad,offset,left_lane_info,right_lane_info)
+w=720 h=480
+
 
     if DEBUG and False :
         f, ((ax1 , ax2) ,(ax3 , ax4)) = plt.subplots(2,2,figsize=(20,10))
