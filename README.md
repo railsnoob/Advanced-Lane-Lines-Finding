@@ -17,7 +17,7 @@ In this project I implement the following steps:
 * Output visual display of the lane boundaries and numerical estimation of lane curvature and vehicle position.
 
 ## Final Video
-Here's a <a href="./processed_video.mp4"><img style="width:40px;height:40px;float:left;margin-left:10px;margin-right:10px;" src="./movie-4.png"/></a> [link to my video result](./processed_video.mp4) in case you just can't wait :).
+Here's a  [link to my video result](./processed_video.mp4) in case you just can't wait :).
 The **system can track the lane lines as they swerve in different directions** and it can deal with the car moving from left to right and with changes in scenery. 
 
 ## Code 
